@@ -1,4 +1,5 @@
 import socket
+import re
 from threading import Thread
 from random import randint
 
@@ -16,71 +17,106 @@ def createServerSocket(server_ip, server_port, kind = 'UDP') -> socket.socket:
 
 	return server_socket
 
-def serverFunction(args):
+def createClientSocket(kind = 'UDP', timeout = -1) -> socket.socket:
+	kind = kind.upper()
+	client_kind: socket.SocketKind = None
+	
+	if kind == 'UDP':
+		client_kind = socket.SOCK_DGRAM
+	else:
+		client_kind = socket.SOCK_STREAM # Use TCP if not 'UDP'
+
+	client_socket = socket.socket(socket.AF_INET, client_kind)
+	
+	if timeout > 0:
+		client_socket.settimeout(timeout)
+
+	return client_socket
+
+def serverThread(args):
 	server_ip = args[0]
 	server_port = args[1]
 
-	print(f'ServerThread> Creating server in {server_ip}:{server_port}...')
+	print_buffer.append(f'ServerThread> Creating server in {server_ip}:{server_port}')
 	try:
 		server_socket = createServerSocket(server_ip, server_port)
-		print('ServerThread> Server socket created successfully.')
+		print_buffer.append('ServerThread> Server socket created successfully.')
 	except Exception as e:
-		print(f'ServerThread> Error creating server socket: {e}')
+		print_buffer.append(f'ServerThread> Error creating server socket: {e}')
+		return
 	
 	try:
 		while True:
 			data, client_address = server_socket.recvfrom(1024)
 			decoded_data = data.decode().strip().upper()
 
-			print(f'ServerThread> Received data from {client_address}: {decoded_data}')
+			print_buffer.append(f'ServerThread> Message received from client: {decoded_data}')
 
 			if decoded_data == 'EXIT':
-				print('ServerThread> Exiting server...')
-				server_socket.sendto('Server closed.'.encode(), client_address)
+				print_buffer.append('ServerThread> Closing server...')
+				server_socket.sendto('Bye, client!.'.encode(), client_address)
 				break
 			else:
-				if decoded_data == 'HELLO':
+				if re.match(r'^HELLO|^HI', decoded_data):
 					response = "Hello, client!"
-				elif decoded_data == 'DO THE MJ':
+				elif re.match(r'^DO THE MJ', decoded_data):
 					response = "Hee-hee!"
-				elif decoded_data == 'WHAT ARE YOU LISTENING TO?':
+				elif re.match(r'^WHAT ARE YOU LISTENING TO', decoded_data):
 					response = ["I'm listening to Billie Jean by Michael Jackson.", "Some bytes B)"][randint(0, 1)]
 				else:
 					response = "Message received successfully."
 
-				print('ServerThread> Sending response to client...')
+				print_buffer.append(f'ServerThread> Sending response to client...')
 				server_socket.sendto(response.encode(), client_address)
 		
 		server_socket.close()
 	except Exception as e:
-		print(f'ServerThread> Error receiving data: {e}')
+		print_buffer.append(f'ServerThread> Error: {e}')
 
-	print('ServerThread> Server closed.')
+	print_buffer.append('ServerThread> Server closed.')
+
+terminate_print_thread = False
+print_buffer = []
+
+def printThread():
+	while (not terminate_print_thread) or len(print_buffer) > 0:
+		if len(print_buffer) > 0:
+			print(print_buffer.pop(0))
 
 if __name__ == '__main__':
 	server_ip = 'localhost'
-	server_port = 8000
+	server_port = 8_000
 
-	server_thread = Thread(target=serverFunction, args=((server_ip, server_port),))
+	# Starting print thread
+	print_thread = Thread(target=printThread)
+	print_thread.start()
+
+	# Starting server thread
+	server_thread = Thread(target=serverThread, args=((server_ip, server_port),))
 	server_thread.start()
 
-	client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-	client_socket.settimeout(5) # Will wait 5 seconds for a response
+	# Creating client socket
+	client_socket = createClientSocket(timeout = 5)
 
 	while True:
-		message = input('Type a message to send to the server: ')
+		print_buffer.append('Client> Enter message to send to server:')
+		message = input().strip()
 
 		try:
-			client_socket.sendto(message.encode(), (server_ip, server_port))
+			client_socket.sendto(message.encode()[:1024], (server_ip, server_port))
 			response = client_socket.recvfrom(1024)
 			decoded_response = response[0].decode()
-			print(f'Client> Server response: {decoded_response}')
+			print_buffer.append(f'Client> Message from server: {decoded_response}')
 		except socket.timeout:
-			print('Client> Server did not respond within 5 seconds.')
+			print_buffer.append(f'Client> Server did not respond within {client_socket.gettimeout()} seconds.')
 		finally:
 			if message == 'exit':
 				break
 	
 	server_thread.join() # Wait for server thread to finish
+
+	terminate_print_thread = True
+	print_thread.join() # Wait for print thread to finish
+
 	client_socket.close()
 	print('Client> Client closed.')
