@@ -1,5 +1,6 @@
 import socket
 import re
+import datetime
 from threading import Thread
 from random import randint
 
@@ -63,6 +64,14 @@ def serverThread(args):
 					response = "Hee-hee!"
 				elif re.match(r'^WHAT ARE YOU LISTENING TO', decoded_data):
 					response = ["I'm listening to Billie Jean by Michael Jackson.", "Some bytes B)"][randint(0, 1)]
+				elif re.match(r'^WHAT.*TIME', decoded_data):
+					response = f"It's {datetime.datetime.now().time().strftime('%H:%M:%S')}."
+				elif re.match(r'^WHAT.*DATE', decoded_data):
+					response = f"It's {datetime.datetime.now().date().strftime('%d/%m/%Y')}."
+				elif re.match(r'^WHAT IS YOUR NAME', decoded_data):
+					response = "I'm Server 8000. Nice to meet you!"
+				elif re.match(r'^WHAT IS YOUR FAVORITE COLOR', decoded_data):
+					response = "I'm colorblind, but I like blue!"
 				else:
 					response = "Message received successfully."
 
